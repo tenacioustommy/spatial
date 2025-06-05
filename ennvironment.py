@@ -137,7 +137,9 @@ class TDWExperiment(Controller):
             position={"x": 0, "y": 10, "z": 0},
             look_at={"x": 0, "y": 0, "z": 0}
         ))
-        commands.append({"$type": "set_screen_size", "width": 512, "height": 512})
+        # 提高图像分辨率以获得更清晰的图片
+        # 可选分辨率: 1920x1080 (高清), 2048x2048 (正方形高清), 4096x4096 (超高清)
+        commands.append({"$type": "set_screen_size", "width": 2048, "height": 2048})
 
         self.communicate(commands)
         print(f"Placed sofa (ID: {self.item_id}) at {sofa_position}, "
