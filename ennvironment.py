@@ -247,7 +247,7 @@ class TDWExperiment(Controller):
         print("Simulation terminated.")
 
 if __name__ == "__main__":
-    output_directory = "C:\\Users\\Admin\\Desktop\\codebase\\spatial\\images"
-    experiment = TDWExperiment(launch_build=True, output_path=output_directory)
+    output_directory = "images/"
+    experiment = TDWExperiment(launch_build=False, output_path=output_directory)
     experiment.run()
     print(f"Experiment finished. Check images in {experiment.output_directory.resolve()}")

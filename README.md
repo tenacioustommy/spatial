@@ -31,6 +31,11 @@ This project creates a virtual 3D environment containing furniture (sofa and cha
    pip install tdw
    ```
 
+## Configuration
+
+For running on Linux server, please check: https://github.com/threedworld-mit/tdw/blob/master/Documentation/lessons/setup/server.md
+
+
 ## Usage
 
 Run the experiment:
