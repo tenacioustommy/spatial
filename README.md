@@ -99,3 +99,11 @@ Image naming follows TDW's automatic naming convention with timestamps.
 - Ensure TDW build is running and accessible on the specified port (default: 1071)
 - Check that output directory has write permissions
 - Verify all required TDW model libraries are available (models_core.json, models_flex.json)
+
+
+## TODO
+- set field of view (deal with blurry images, optional)
+- pick proper objects to place in the scene
+- deal with occlusion
+- set camera position
+  - check visibility of object in one scene
