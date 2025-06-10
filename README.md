@@ -102,8 +102,17 @@ Image naming follows TDW's automatic naming convention with timestamps.
 
 
 ## TODO
-- set field of view (deal with blurry images, optional)
 - pick proper objects to place in the scene
-- deal with occlusion
+- top down camera mark 
+- set field of view (deal with blurry images, optional)
+
+- Need to prompt the model to know what is directly in front
+  - Mark the center of the object and direct front line in the image
+  - give a minor redundancy (< 5 degrees)
+
 - set camera position
+  - (option 1) set camera only on object's position
+  - (option 2) random position
+  - Need to generate noise positions
+- deal with occlusion
   - check visibility of object in one scene
