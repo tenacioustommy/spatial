@@ -12,7 +12,7 @@ class TDWExperiment(Controller):
                  port: int = 1071,
                  check_version: bool = True,
                  launch_build: bool = True,
-                 output_path: str = "tdw_experiment_output"):
+                 output_path: str = None):
         super().__init__(port=port, check_version=check_version, launch_build=launch_build)
 
         self.output_directory = Path(output_path)
@@ -139,7 +139,7 @@ class TDWExperiment(Controller):
         ))
         # 提高图像分辨率以获得更清晰的图片
         # 可选分辨率: 1920x1080 (高清), 2048x2048 (正方形高清), 4096x4096 (超高清)
-        commands.append({"$type": "set_screen_size", "width": 2048, "height": 2048})
+        commands.append({"$type": "set_screen_size", "width": 1024, "height": 1024})
 
         self.communicate(commands)
         print(f"Placed sofa (ID: {self.item_id}) at {sofa_position}, "
@@ -247,7 +247,7 @@ class TDWExperiment(Controller):
         print("Simulation terminated.")
 
 if __name__ == "__main__":
-    output_directory = "C:\\Users\\Admin\\Desktop\\codebase\\spatial\\images"
+    output_directory = r"D:\ComputerScience\Leetcode\spatial\images"
     experiment = TDWExperiment(launch_build=True, output_path=output_directory)
     experiment.run()
     print(f"Experiment finished. Check images in {experiment.output_directory.resolve()}")
