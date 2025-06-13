@@ -116,3 +116,11 @@ Image naming follows TDW's automatic naming convention with timestamps.
   - Need to generate noise positions
 - deal with occlusion
   - check visibility of object in one scene
+
+
+## How to put object:
+1. Use occupancy map:
+  - Use two different rooms, one for the final room, one for the object placement
+  - Before placing next object in the final room, check the occupancy map of the object in the next room to check whether there's occupied
+  - refer to https://github.com/threedworld-mit/tdw/blob/master/Documentation/python/add_ons/occupancy_map.md
+  
