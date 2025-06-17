@@ -8,7 +8,7 @@ from pathlib import Path
 import os
 from PIL import Image, ImageDraw, ImageFont
 from tdw.librarian import ModelLibrarian
-
+random.seed(42)  # 设置随机种子以确保可重复性
 class TDWExperiment(Controller):
     def __init__(self,
                  port: int = 1071,
@@ -32,37 +32,59 @@ class TDWExperiment(Controller):
         self.need = ["chair", "table", "sofa", "bed", "desk", "shelf", "cabinet", "lamp", "couch", "stool"]
         self.selected_objects = self._select_random_objects()
 
-        # 定义多个摄像机的位置和角度，包含前后左右各个角度
-        self.camera_configs = [
-            # 前方摄像机
-            {"id": "camera_1", "position": {"x": 0, "y": 1.5, "z": 4.0}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_2", "position": {"x": 1.5, "y": 1.5, "z": 3.5}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_3", "position": {"x": -1.5, "y": 1.5, "z": 3.5}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
+        # 定义多个摄像机的位置和角度，从12点方向开始顺时针均匀分配16个摄像机
+        self.camera_configs = []
+        num_cameras = 16
+        radius = 4.0  # 摄像机距离中心的半径
+        camera_height = 1.5
+        
+        for i in range(num_cameras):
+            # 从12点方向(0度)开始，顺时针分配
+            angle_degrees = i * (360 / num_cameras)  # 每个摄像机间隔22.5度
+            angle_radians = math.radians(angle_degrees)
             
-            # 背后摄像机
-            {"id": "camera_4", "position": {"x": 0, "y": 1.5, "z": -4.0}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_5", "position": {"x": 1.5, "y": 1.5, "z": -3.5}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_6", "position": {"x": -1.5, "y": 1.5, "z": -3.5}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
+            # 计算摄像机位置（12点方向为z轴正方向）
+            x = radius * math.sin(angle_radians)
+            z = radius * math.cos(angle_radians)
             
-            # 左侧摄像机
-            {"id": "camera_7", "position": {"x": -4.0, "y": 1.5, "z": 0}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_8", "position": {"x": -3.5, "y": 1.5, "z": 1.5}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_9", "position": {"x": -3.5, "y": 1.5, "z": -1.5}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            
-            # 右侧摄像机
-            {"id": "camera_10", "position": {"x": 4.0, "y": 1.5, "z": 0}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_11", "position": {"x": 3.5, "y": 1.5, "z": 1.5}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_12", "position": {"x": 3.5, "y": 1.5, "z": -1.5}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            
-            # 对角线摄像机
-            {"id": "camera_13", "position": {"x": 3.0, "y": 1.5, "z": 3.0}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_14", "position": {"x": -3.0, "y": 1.5, "z": 3.0}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_15", "position": {"x": 3.0, "y": 1.5, "z": -3.0}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-            {"id": "camera_16", "position": {"x": -3.0, "y": 1.5, "z": -3.0}, "look_at": {"x": 0, "y": 1.5, "z": 0}},
-
-            # 俯视摄像机
-            {"id": "top_down_camera", "position": {"x": 0, "y": 10, "z": 0}, "look_at": {"x": 0, "y": 0, "z": 0}}
+            camera_config = {
+                "id": f"camera_{i+1}",
+                "position": {"x": x, "y": camera_height, "z": z},
+                "look_at": {"x": 0, "y": camera_height, "z": 0}
+            }
+            self.camera_configs.append(camera_config)
+        
+        # 添加四个中心摄像机，分别朝向前后左右四个方向
+        center_cameras = [
+            {
+                "id": "center_north",
+                "position": {"x": 0, "y": camera_height, "z": 0},
+                "look_at": {"x": 0, "y": camera_height, "z": 5}  # 朝北(前方，正z方向)
+            },
+            {
+                "id": "center_south", 
+                "position": {"x": 0, "y": camera_height, "z": 0},
+                "look_at": {"x": 0, "y": camera_height, "z": -5}  # 朝南(后方，负z方向)
+            },
+            {
+                "id": "center_east",
+                "position": {"x": 0, "y": camera_height, "z": 0},
+                "look_at": {"x": 5, "y": camera_height, "z": 0}  # 朝东(右方，正x方向)
+            },
+            {
+                "id": "center_west",
+                "position": {"x": 0, "y": camera_height, "z": 0},
+                "look_at": {"x": -5, "y": camera_height, "z": 0}  # 朝西(左方，负x方向)
+            }
         ]
+        self.camera_configs.extend(center_cameras)
+        
+        # 添加俯视摄像机
+        self.camera_configs.append({
+            "id": "top_down_camera", 
+            "position": {"x": 0, "y": 10, "z": 0}, 
+            "look_at": {"x": 0, "y": 0, "z": 0}
+        })
 
         # 提取所有摄像机ID
         camera_ids = [config["id"] for config in self.camera_configs]
@@ -78,12 +100,10 @@ class TDWExperiment(Controller):
 
         # 动态生成物体ID
         self.object_ids = [self.get_unique_id() for _ in range(self.num_objects)]
-        self.camera_ground_marker_id = self.get_unique_id()
-        self.fov_area_markers = []  # For FOV area visualization
 
-        self.MAIN_CAMERA_FOV_ANGLE = 54.43223  # Match the actual camera FOV
-        self.FOV_MARKER_LINE_LENGTH = 1.5
-        self.FOV_AREA_MARKER_SIZE = 0.05  # Size of markers for FOV area
+        self.HORIZONTAL_FOV = 90.0  # 目标水平视野角度
+        self.screen_width = 1024
+        self.screen_height = 1024
 
         self.current_main_camera_position = {"x": 0, "y": 0, "z": 0}
 
@@ -103,55 +123,6 @@ class TDWExperiment(Controller):
         selected = random.sample(suitable_objects, self.num_objects)
         print(f"Selected objects: {[obj.name for obj in selected]}")
         return selected
-
-    def _create_fov_area_markers(self, cam_ground_pos: dict, look_at_target: dict, ground_y: float) -> list:
-        """Create small markers to fill the FOV area for better visualization."""
-        commands = []
-        
-        cam_x, cam_z = cam_ground_pos["x"], cam_ground_pos["z"]
-        look_x, look_z = look_at_target["x"], look_at_target["z"]
-        
-        dx = look_x - cam_x
-        dz = look_z - cam_z
-        
-        center_angle_rad = math.atan2(dz, dx)
-        half_fov_rad = math.radians(self.MAIN_CAMERA_FOV_ANGLE / 2.0)
-        
-        # Create markers along the FOV area
-        num_radial_lines = 2  # Number of radial lines within FOV
-        num_markers_per_line = 15  # Number of markers along each radial line
-        
-        for i in range(num_radial_lines):
-            angle_offset = (i / (num_radial_lines - 1) - 0.5) * self.MAIN_CAMERA_FOV_ANGLE
-            angle_rad = center_angle_rad + math.radians(angle_offset)
-            
-            for j in range(1, num_markers_per_line + 1):
-                distance = (j / num_markers_per_line) * self.FOV_MARKER_LINE_LENGTH
-                marker_pos = {
-                    "x": cam_x + distance * math.cos(angle_rad),
-                    "y": ground_y,
-                    "z": cam_z + distance * math.sin(angle_rad)
-                }
-                
-                marker_id = self.get_unique_id()
-                self.fov_area_markers.append(marker_id)
-                
-                commands.extend([
-                    self.get_add_object(model_name="sphere", 
-                                      object_id=marker_id, 
-                                      position=marker_pos, 
-                                      library="models_flex.json"),
-                    {"$type": "scale_object", 
-                     "id": marker_id, 
-                     "scale_factor": {"x": self.FOV_AREA_MARKER_SIZE, 
-                                    "y": self.FOV_AREA_MARKER_SIZE, 
-                                    "z": self.FOV_AREA_MARKER_SIZE}},
-                    {"$type": "set_color", 
-                     "id": marker_id, 
-                     "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 0.0}}  # Yellow with transparency
-                ])
-        
-        return commands
 
     def _generate_random_positions(self, num_objects=None, room_size=12, min_distance=2.0):
         """生成随机位置，确保物体之间不重合"""
@@ -198,10 +169,38 @@ class TDWExperiment(Controller):
         
         return positions
 
+    def calculate_vertical_fov(self, horizontal_fov_degrees, width, height):
+        """
+        根据水平FOV和屏幕尺寸计算垂直FOV
+        
+        Args:
+            horizontal_fov_degrees: 期望的水平视野角度
+            width: 屏幕宽度
+            height: 屏幕高度
+            
+        Returns:
+            垂直FOV角度
+        """
+        aspect_ratio = width / height
+        horizontal_fov_rad = math.radians(horizontal_fov_degrees)
+        vertical_fov_rad = 2 * math.atan(math.tan(horizontal_fov_rad / 2) / aspect_ratio)
+        vertical_fov_degrees = math.degrees(vertical_fov_rad)
+        
+        print(f"Screen size: {width}x{height}, Aspect ratio: {aspect_ratio:.3f}")
+        print(f"Horizontal FOV: {horizontal_fov_degrees}°, Calculated Vertical FOV: {vertical_fov_degrees:.2f}°")
+        
+        return vertical_fov_degrees
+
     def setup_scene(self):
         """Initialize the scene: empty room and randomly selected objects."""
         print("Setting up scene...")
-        commands = [TDWUtils.create_empty_room(12, 12)]
+        commands = [TDWUtils.create_empty_room(12,12)]  # 房间尺寸：12x12米的正方形
+
+        # 设置统一的屏幕尺寸
+        commands.append({"$type": "set_screen_size", "width": self.screen_width, "height": self.screen_height})
+
+        # 计算垂直FOV以保持90度水平视野
+        vertical_fov = self.calculate_vertical_fov(self.HORIZONTAL_FOV, self.screen_width, self.screen_height)
 
         # 生成随机位置
         positions = self._generate_random_positions(self.num_objects, room_size=12, min_distance=2.0)
@@ -228,67 +227,33 @@ class TDWExperiment(Controller):
                 look_at=camera_config["look_at"]
             ))
 
-        # 提高图像分辨率以获得更清晰的图片
-        commands.append({"$type": "set_screen_size", "width": 1024, "height": 1024})
-
+        # 为所有摄像机设置计算后的垂直FOV以保持90度水平视野
+        for camera_config in self.camera_configs:
+            if camera_config["id"] != "top_down_camera":
+                commands.append({
+                    "$type": "set_field_of_view", 
+                    "avatar_id": camera_config["id"], 
+                    "field_of_view": vertical_fov
+                })
+        commands.append({"$type": "terminate"})
         self.communicate(commands)
         print(f"Scene setup complete. Created {len(self.camera_configs)} cameras.")
+        print(f"All cameras: {self.screen_width}x{self.screen_height} with {self.HORIZONTAL_FOV}° horizontal FOV")
+
     def capture_all_perspectives(self):
-        """Capture images from all cameras simultaneously with FOV markers."""
-        print("Capturing images from all cameras with FOV markers...")
+        """Capture images from all cameras simultaneously."""
+        print("Capturing images from all cameras...")
         
-        ground_y = 0.01
-        all_fov_marker_ids = []
-        all_camera_marker_ids = []
-        all_commands = []
+        # 直接捕获图像，不添加任何3D标记
+        self.communicate({"$type": "terminate"})
         
-        # 为每个摄像机（除了俯视摄像机）创建FOV标记
-        for camera_config in self.camera_configs:
-            if camera_config["id"] == "top_down_camera":
-                continue
-                
-            cam_pos = camera_config["position"]
-            look_at = camera_config["look_at"]
-            
-            # 为每个摄像机创建地面位置标记
-            camera_marker_id = self.get_unique_id()
-            all_camera_marker_ids.append(camera_marker_id)
-            cam_ground_pos = {"x": cam_pos["x"], "y": ground_y, "z": cam_pos["z"]}
-            
-            # 创建摄像机位置标记
-            camera_commands = [
-                self.get_add_object(model_name="sphere", 
-                                  object_id=camera_marker_id, 
-                                  position=cam_ground_pos, 
-                                  library="models_flex.json"),
-                {"$type": "scale_object", 
-                 "id": camera_marker_id, 
-                 "scale_factor": {"x": 0.08, "y": 0.08, "z": 0.08}},
-                {"$type": "set_color", 
-                 "id": camera_marker_id, 
-                 "color": {"r": 0.0, "g": 0.0, "b": 1.0, "a": 1.0}}  # 蓝色摄像机标记
-            ]
-            
-            # 为这个摄像机创建FOV区域标记
-            self.fov_area_markers = []  # 重置FOV标记列表
-            fov_commands = self._create_fov_area_markers(cam_ground_pos, look_at, ground_y)
-            camera_commands.extend(fov_commands)
-            all_fov_marker_ids.extend(self.fov_area_markers)
-            
-            # 将所有命令添加到总命令列表
-            all_commands.extend(camera_commands)
-        all_commands.append({"$type": "terminate"})
-        # 一次性执行所有命令并捕获图像
-        print(f"Creating {len(all_commands)} FOV markers and capturing images...")
-        self.communicate(all_commands)
-        
-        print(f"Images captured from {len(self.camera_configs)} cameras with FOV visualization.")
+        print(f"Images captured from {len(self.camera_configs)} cameras.")
 
     def add_camera_labels_to_top_down_image(self):
-        """在俯视图上添加摄像机编号标签"""
+        """在俯视图上添加摄像机编号标签和视野标记"""
         try:
             # 直接使用固定的俯视图文件路径
-            top_down_image_path = self.output_directory / "top_down_camera" / "img_0001.png"
+            top_down_image_path = self.output_directory / "top_down_camera" / "img_0000.png"
             
             if not top_down_image_path.exists():
                 print(f"Top-down image not found: {top_down_image_path}")
@@ -316,28 +281,68 @@ class TDWExperiment(Controller):
             center_x = img_width // 2
             center_y = img_height // 2
             
-            # 添加摄像机编号标签（从camera_configs中提取）
+            # 视野相关参数
+            fov_length_pixels = int(1.5 * pixel_per_unit)  # FOV线长度（像素）
+            
+            # 添加摄像机编号标签和视野标记
             for camera_config in self.camera_configs:
                 if camera_config["id"] == "top_down_camera":
                     continue
                     
                 cam_pos = camera_config["position"]
+                look_at = camera_config["look_at"]
                 camera_number = camera_config["id"].split("_")[-1]  # 提取数字部分
                 
                 # 将3D坐标转换为2D图片像素坐标
                 pixel_x = center_x + int(cam_pos["x"] * pixel_per_unit)
                 pixel_y = center_y - int(cam_pos["z"] * pixel_per_unit)  # 注意Y轴翻转
                 
-                # 绘制编号文本
+                # 绘制摄像机位置标记（蓝色圆点）
+                marker_radius = 8
+                draw.ellipse([pixel_x - marker_radius, pixel_y - marker_radius, 
+                             pixel_x + marker_radius, pixel_y + marker_radius], 
+                             fill=(0, 0, 255, 255))
+                
+                # 计算视野方向
+                dx = look_at["x"] - cam_pos["x"]
+                dz = look_at["z"] - cam_pos["z"]
+                center_angle_rad = math.atan2(dz, dx)
+                
+                # 绘制视野扇形区域
+                half_fov_rad = math.radians(self.HORIZONTAL_FOV / 2.0)
+                
+                # 计算视野边界线的端点
+                left_angle = center_angle_rad - half_fov_rad
+                right_angle = center_angle_rad + half_fov_rad
+                
+                left_end_x = pixel_x + fov_length_pixels * math.cos(left_angle)
+                left_end_y = pixel_y - fov_length_pixels * math.sin(left_angle)  # Y轴翻转
+                
+                right_end_x = pixel_x + fov_length_pixels * math.cos(right_angle)
+                right_end_y = pixel_y - fov_length_pixels * math.sin(right_angle)  # Y轴翻转
+                
+                # 绘制视野边界线（红色）
+                draw.line([pixel_x, pixel_y, left_end_x, left_end_y], fill=(255, 0, 0, 255), width=2)
+                draw.line([pixel_x, pixel_y, right_end_x, right_end_y], fill=(255, 0, 0, 255), width=2)
+                
+                # # 绘制视野中心线（较细的红色线）
+                # center_end_x = pixel_x + fov_length_pixels * math.cos(center_angle_rad)
+                # center_end_y = pixel_y - fov_length_pixels * math.sin(center_angle_rad)  # Y轴翻转
+                # draw.line([pixel_x, pixel_y, center_end_x, center_end_y], fill=(255, 100, 100, 255), width=1)
+                
+                # 计算编号文本在扇形内部的位置
                 text = camera_number
+                text_distance = fov_length_pixels * 0.3  # 文本位置在扇形长度的60%处
+                text_pos_x = pixel_x + text_distance * math.cos(center_angle_rad)
+                text_pos_y = pixel_y - text_distance * math.sin(center_angle_rad)  # Y轴翻转
                 
                 # 计算文本位置（居中）
                 text_bbox = draw.textbbox((0, 0), text, font=font)
                 text_width = text_bbox[2] - text_bbox[0]
                 text_height = text_bbox[3] - text_bbox[1]
                 
-                text_x = pixel_x - text_width // 2
-                text_y = pixel_y - text_height // 2
+                text_x = text_pos_x - text_width // 2
+                text_y = text_pos_y - text_height // 2
                 
                 # 直接绘制红色文本
                 draw.text((text_x, text_y), text, fill=(255, 0, 0, 255), font=font)
@@ -345,17 +350,13 @@ class TDWExperiment(Controller):
             # 保存修改后的图片
             labeled_image_path = top_down_image_path.parent / f"labeled_{top_down_image_path.name}"
             img.save(labeled_image_path)
-            print(f"Labeled image saved to: {labeled_image_path}")
+            print(f"Labeled image with FOV visualization saved to: {labeled_image_path}")
             
         except Exception as e:
             print(f"Error adding labels to top-down image: {e}")
 
     def run(self):
         self.setup_scene()
-        self.capture_all_perspectives()
-        # self.communicate({"$type": "terminate"})
-        print("Simulation terminated.")
-        
         # 在场景终止后添加标签
         self.add_camera_labels_to_top_down_image()
 

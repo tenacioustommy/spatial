@@ -139,7 +139,7 @@ class TDWExperiment(Controller):
         ))
         # 提高图像分辨率以获得更清晰的图片
         # 可选分辨率: 1920x1080 (高清), 2048x2048 (正方形高清), 4096x4096 (超高清)
-        commands.append({"$type": "set_screen_size", "width": 1024, "height": 1024})
+        commands.append({"$type": "set_screen_size", "width": 1920, "height": 1080})
 
         self.communicate(commands)
         print(f"Placed sofa (ID: {self.item_id}) at {sofa_position}, "
@@ -202,7 +202,7 @@ class TDWExperiment(Controller):
                 print(f"    Look at target: {random_look_at_target}")
                 
                 main_cam_setup_commands = [
-                    # {"$type": "set_field_of_view", "field_of_view": 54.43223, "avatar_id": "main_camera"},
+                    {"$type": "set_field_of_view", "field_of_view": 54.43223, "avatar_id": "main_camera"},
                     {"$type": "teleport_avatar_to",
                      "avatar_id": "main_camera",
                      "position": cam_pos},
