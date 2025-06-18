@@ -17,6 +17,8 @@ from tdw.object_data.transform import Transform
 """Useful documentation:
 1. Avatar and camera: https://github.com/threedworld-mit/tdw/blob/master/Documentation/lessons/core_concepts/avatars.md
 2. Segmentation: https://github.com/threedworld-mit/tdw/blob/master/Documentation/lessons/visual_perception/id.md
+3. Output data: https://github.com/threedworld-mit/tdw/blob/master/Documentation/api/output_data.md
+4. Bounds: https://github.com/threedworld-mit/tdw/blob/master/Documentation/lessons/scene_setup_low_level/bounds.md
 """
 
 @dataclass
