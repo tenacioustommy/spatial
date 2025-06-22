@@ -461,6 +461,7 @@ class DataConstructor:
 
 
 if __name__ == "__main__":
+
     object_pool = [
         'blue_club_chair', 'blue_side_chair', 'brown_leather_dining_chair', 
         'brown_leather_side_chair', 'chair_annabelle', 'chair_billiani_doll', 
@@ -472,19 +473,18 @@ if __name__ == "__main__":
         'white_club_chair', 'white_lounger_chair', 'wood_chair', 'yellow_side_chair'
     ]
 
-    # Create the data constructor with custom parameters
     data_constructor = DataConstructor(
-        output_path="my_output",           # Directory to save images
-        random_state=0,                   # Seed for reproducibility
-        room_size=(10, 10),               # Room dimensions (width, depth)
-        num_objects=5,                    # Number of objects to place
-        object_pool=object_pool,          # Pool of objects to choose from
-        min_distance=0.5,                 # Minimum distance between objects
-        screen_size=(2048, 2048)          # Image resolution
+        output_path="images/task_1",
+        random_state=1,
+        room_size=(10, 10),
+        num_objects=5,
+        object_pool=object_pool,
+        min_distance=1,
+        screen_size=(2048, 2048)
     )
 
-    # The scene is automatically set up during initialization
-    print(f"Successfully created scene with {len(data_constructor.placed_objects)} objects")
+    
+
 
     data_constructor.create_data()  
     data_constructor.cleanup()
