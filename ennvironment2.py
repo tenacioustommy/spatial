@@ -1,5 +1,6 @@
 import math
 import random
+import json
 from tdw.controller import Controller
 from tdw.tdw_utils import TDWUtils
 from tdw.add_ons.image_capture import ImageCapture
@@ -8,7 +9,9 @@ from pathlib import Path
 import os
 from PIL import Image, ImageDraw, ImageFont
 from tdw.librarian import ModelLibrarian
+import numpy as np
 random.seed(42)  # 设置随机种子以确保可重复性
+
 class TDWExperiment(Controller):
     def __init__(self,
                  port: int = 1071,
@@ -17,7 +20,6 @@ class TDWExperiment(Controller):
                  output_path: str = None,
                  num_objects: int = 3):
         super().__init__(port=port, check_version=check_version, launch_build=launch_build)
-
         self.output_directory = Path(output_path)
         if not self.output_directory.exists():
             self.output_directory.mkdir(parents=True, exist_ok=True)
@@ -38,6 +40,14 @@ class TDWExperiment(Controller):
         radius = 4.0  # 摄像机距离中心的半径
         camera_height = 1.5
         
+        # 定义四个基本朝向的相对方向向量
+        direction_vectors = [
+            {"x": 0, "z": 1},   # 朝北(前方，+z方向)
+            {"x": 1, "z": 0},   # 朝东(右方，+x方向)
+            {"x": 0, "z": -1},  # 朝南(后方，-z方向)
+            {"x": -1, "z": 0}   # 朝西(左方，-x方向)
+        ]
+        
         for i in range(num_cameras):
             # 从12点方向(0度)开始，顺时针分配
             angle_degrees = i * (360 / num_cameras)  # 每个摄像机间隔22.5度
@@ -47,34 +57,42 @@ class TDWExperiment(Controller):
             x = radius * math.sin(angle_radians)
             z = radius * math.cos(angle_radians)
             
+            # 随机选择一个朝向方向
+            direction = random.choice(direction_vectors)
+            
+            # 基于摄像机位置和选择的方向，计算朝向的绝对坐标点
+            look_distance = 5.0  # 朝向点距离摄像机的距离
+            look_at_x = x + direction["x"] * look_distance
+            look_at_z = z + direction["z"] * look_distance
+            
             camera_config = {
                 "id": f"camera_{i+1}",
                 "position": {"x": x, "y": camera_height, "z": z},
-                "look_at": {"x": 0, "y": camera_height, "z": 0}
+                "look_at": {"x": look_at_x, "y": camera_height, "z": look_at_z}  # 基于位置计算的绝对坐标
             }
             self.camera_configs.append(camera_config)
         
-        # 添加四个中心摄像机，分别朝向前后左右四个方向
+        # 添加四个中心摄像机，分别朝向前后左右四个方向（使用绝对坐标）
         center_cameras = [
             {
                 "id": "center_north",
                 "position": {"x": 0, "y": camera_height, "z": 0},
-                "look_at": {"x": 0, "y": camera_height, "z": 5}  # 朝北(前方，正z方向)
+                "look_at": {"x": 0, "y": camera_height, "z": 5}   # 朝北(前方，绝对坐标)
             },
             {
-                "id": "center_south", 
-                "position": {"x": 0, "y": camera_height, "z": 0},
-                "look_at": {"x": 0, "y": camera_height, "z": -5}  # 朝南(后方，负z方向)
+                "id": "center_east", 
+                "position": {"x": -1, "y": camera_height, "z": 0},
+                "look_at": {"x": 5, "y": camera_height, "z": 0}   # 朝东(右方，绝对坐标)
             },
             {
-                "id": "center_east",
+                "id": "center_south",
                 "position": {"x": 0, "y": camera_height, "z": 0},
-                "look_at": {"x": 5, "y": camera_height, "z": 0}  # 朝东(右方，正x方向)
+                "look_at": {"x": 0, "y": camera_height, "z": -5}  # 朝南(后方，绝对坐标)
             },
             {
                 "id": "center_west",
                 "position": {"x": 0, "y": camera_height, "z": 0},
-                "look_at": {"x": -5, "y": camera_height, "z": 0}  # 朝西(左方，负x方向)
+                "look_at": {"x": -5, "y": camera_height, "z": 0}  # 朝西(左方，绝对坐标)
             }
         ]
         self.camera_configs.extend(center_cameras)
@@ -100,7 +118,7 @@ class TDWExperiment(Controller):
 
         # 动态生成物体ID
         self.object_ids = [self.get_unique_id() for _ in range(self.num_objects)]
-
+        self.big_object_ids = [self.object_ids[0]]  # 第一个物体是大物体
         self.HORIZONTAL_FOV = 90.0  # 目标水平视野角度
         self.screen_width = 1024
         self.screen_height = 1024
@@ -110,7 +128,11 @@ class TDWExperiment(Controller):
     def _select_random_objects(self):
         """从符合要求的模型中随机选择指定数量的物体"""
         suitable_objects = []
+        big_object=[]
         for record in self.librarian.records:
+            if 'fridge_large' == record.name.lower():
+                big_object.append(record)
+                
             for keyword in self.need:
                 if keyword in record.name.lower():
                     suitable_objects.append(record)
@@ -121,51 +143,47 @@ class TDWExperiment(Controller):
             return suitable_objects
         
         selected = random.sample(suitable_objects, self.num_objects)
+        selected[0]=big_object[0]
+        # 记录大物体ID
         print(f"Selected objects: {[obj.name for obj in selected]}")
         return selected
 
     def _generate_random_positions(self, num_objects=None, room_size=12, min_distance=2.0):
-        """生成随机位置，确保物体之间不重合"""
+        """生成固定位置，确保物体之间不重合，大物体放在中心附近"""
         if num_objects is None:
             num_objects = self.num_objects
             
         positions = []
-        max_attempts = 100  # 防止无限循环
         
-        for i in range(num_objects):
-            attempts = 0
-            while attempts < max_attempts:
-                # 在房间范围内生成随机坐标，留出边界空间
-                margin = 1.5  # 距离墙壁的最小距离
-                x = random.uniform(-room_size/2 + margin, room_size/2 - margin)
-                z = random.uniform(-room_size/2 + margin, room_size/2 - margin)
-                y = 0  # 物体放在地面上
-                
-                new_position = {"x": x, "y": y, "z": z}
-                
-                # 检查与已有位置的距离
-                valid = True
-                for existing_pos in positions:
-                    distance = math.sqrt(
-                        (new_position["x"] - existing_pos["x"])**2 + 
-                        (new_position["z"] - existing_pos["z"])**2
-                    )
-                    if distance < min_distance:
-                        valid = False
-                        break
-                
-                if valid:
-                    positions.append(new_position)
-                    print(f"Generated position {i+1}: {new_position}")
-                    break
-                
-                attempts += 1
+        # 第一个物体（大物体）放在中心附近
+        big_object_position = {"x": 0.5, "y": 0, "z": 0.5}  # 中心附近的固定位置
+        positions.append(big_object_position)
+        print(f"Generated position 1 (big object): {big_object_position}")
+        
+        # 其他物体使用预定义的固定位置
+        predefined_positions = [
+            {"x": -3.0, "y": 0, "z": -3.0},  # 左后
+            {"x": 3.0, "y": 0, "z": -3.0},   # 右后
+            {"x": -3.0, "y": 0, "z": 3.0},   # 左前
+            {"x": 3.0, "y": 0, "z": 3.0},    # 右前
+            {"x": -2.0, "y": 0, "z": 0},     # 左中
+            {"x": 2.0, "y": 0, "z": 0},      # 右中
+            {"x": 0, "y": 0, "z": -3.0},     # 后中
+            {"x": 0, "y": 0, "z": 3.0},      # 前中
+        ]
+        
+        # 添加剩余物体的位置
+        for i in range(1, num_objects):
+            if i-1 < len(predefined_positions):
+                position = predefined_positions[i-1]
+            else:
+                # 如果预定义位置不够，使用后备位置
+                fallback_x = ((i-1) % 4 - 1.5) * 2.5
+                fallback_z = ((i-1) // 4 - 1.5) * 2.5
+                position = {"x": fallback_x, "y": 0, "z": fallback_z}
             
-            if attempts >= max_attempts:
-                print(f"Warning: Could not find valid position for object {i+1}, using fallback position")
-                # 使用后备位置
-                fallback_x = (i - num_objects//2) * 3.0  # 居中排列
-                positions.append({"x": fallback_x, "y": 0, "z": 0})
+            positions.append(position)
+            print(f"Generated position {i+1}: {position}")
         
         return positions
 
@@ -204,10 +222,14 @@ class TDWExperiment(Controller):
 
         # 生成随机位置
         positions = self._generate_random_positions(self.num_objects, room_size=12, min_distance=2.0)
+      
+        # 定义允许的旋转角度：0, 90, 180, 270 度
+        allowed_rotations = [0, 90, 180, 270]
         
         for i, (obj_record, position, obj_id) in enumerate(zip(self.selected_objects, positions, self.object_ids)):
-            # 为某些物体添加随机旋转
-            rotation = {"x": 0, "y": random.uniform(0, 360), "z": 0}
+            # 随机选择一个允许的旋转角度
+            rotation_y = random.choice(allowed_rotations)
+            rotation = {"x": 0, "y": rotation_y, "z": 0}
             
             commands.append(self.get_add_object(
                 model_name=obj_record.name,
@@ -235,7 +257,7 @@ class TDWExperiment(Controller):
                     "avatar_id": camera_config["id"], 
                     "field_of_view": vertical_fov
                 })
-        commands.append({"$type": "terminate"})
+        # commands.append({"$type": "terminate"})
         self.communicate(commands)
         print(f"Scene setup complete. Created {len(self.camera_configs)} cameras.")
         print(f"All cameras: {self.screen_width}x{self.screen_height} with {self.HORIZONTAL_FOV}° horizontal FOV")
@@ -354,11 +376,365 @@ class TDWExperiment(Controller):
             
         except Exception as e:
             print(f"Error adding labels to top-down image: {e}")
+            
+    def extract_coordinate_scalar(self, coord_array, axis_index):
+            """从三维坐标数组中提取指定轴的标量值"""
+            if hasattr(coord_array, '__getitem__'):
+                coord_val = coord_array[axis_index]
+                if hasattr(coord_val, 'item'):
+                    return coord_val.item()
+                else:
+                    return float(coord_val)
+            else:
+                return float(coord_array)
+            
+    def can_camera_see_object(self, camera_position, camera_look_at, target_object_id):
+        """
+        检测摄像机在指定位置和朝向是否可以看到目标物体
+        要求物体完全在视野内且无遮挡才算看见
+        
+        Args:
+            camera_position: 摄像机位置 {"x": float, "y": float, "z": float}
+            camera_look_at: 摄像机朝向的目标点 {"x": float, "y": float, "z": float}
+            target_object_id: 目标物体ID
+            
+        Returns:
+            dict: 包含可见性、图片路径和物体朝向的信息
+                {
+                    "can_see": bool,
+                    "image_path": str or None,
+                    "object_direction": str or None  # "front", "back", "left", "right"
+                }
+        """
+        result = {
+            "can_see": False,
+            "image_path": None,
+            "object_direction": None
+        }
+        
+        # 获取目标物体的位置和边界
+        if target_object_id not in self.object_manager.objects_static:
+            print(f"Object {target_object_id} not found")
+            return result
+            
+        target_transform = self.object_manager.transforms[target_object_id]
+        target_bounds = self.object_manager.bounds[target_object_id]
+        target_position = target_transform.position
+        
+        # 计算摄像机的朝向角度
+        cam_dx = camera_look_at["x"] - camera_position["x"]
+        cam_dz = camera_look_at["z"] - camera_position["z"]
+        camera_angle = math.degrees(math.atan2(cam_dx, cam_dz))
+        if camera_angle < 0:
+            camera_angle += 360
+        
+        # 边界框的每个面都是三维坐标点，从中提取对应轴的坐标值
+        # 找到所有边界点中各轴的最值
+        all_boundary_points = [
+            target_bounds.left, target_bounds.right, target_bounds.front, 
+            target_bounds.back, target_bounds.top, target_bounds.bottom
+        ]
+        
+        # 提取所有边界点的x坐标，找最小值和最大值
+        x_coords = [self.extract_coordinate_scalar(point, 0) for point in all_boundary_points]
+        min_x = min(x_coords)
+        max_x = max(x_coords)
+        
+        # 提取所有边界点的z坐标，找最小值和最大值  
+        z_coords = [self.extract_coordinate_scalar(point, 2) for point in all_boundary_points]
+        min_z = min(z_coords)
+        max_z = max(z_coords)
+        
+        half_width = (max_x - min_x) / 2
+        half_depth = (max_z - min_z) / 2
+        
+        # target_position 是三维坐标数组 [x, y, z]
+        target_x = target_bounds.center[0]  # x 坐标
+        target_z = target_bounds.center[2]  # z 坐标
+        
+        corner_points = [
+            [target_x - half_width, target_z - half_depth],  # 左后
+            [target_x + half_width, target_z - half_depth],  # 右后
+            [target_x - half_width, target_z + half_depth],  # 左前
+            [target_x + half_width, target_z + half_depth],  # 右前
+        ]
+        
+        # 检查所有角点是否都在视野内
+        for corner_x, corner_z in corner_points:
+            # 计算角点相对于摄像机的角度
+            corner_dx = corner_x - camera_position["x"]
+            corner_dz = corner_z - camera_position["z"]
+            corner_angle = math.degrees(math.atan2(corner_dx, corner_dz))
+            if corner_angle < 0:
+                corner_angle += 360
+            
+            # 计算角度差
+            angle_diff = abs(corner_angle - camera_angle)
+            if angle_diff > 180:
+                angle_diff = 360 - angle_diff
+                
+            # 如果任何一个角点超出视野范围，则物体不完全可见
+            if angle_diff > self.HORIZONTAL_FOV / 2:
+                return result
+        
+        # 检查是否被大物体遮挡 - 需要检查到所有角点的射线（仅考虑x,z平面）
+        for big_object_id in self.big_object_ids:
+            if big_object_id == target_object_id:
+                continue  # 跳过目标物体本身
+                
+            if big_object_id not in self.object_manager.objects_static:
+                continue
+                
+            # 获取大物体的位置和边界
+            big_transform = self.object_manager.transforms[big_object_id]
+            big_bounds = self.object_manager.bounds[big_object_id]
+            
+            # 检查到所有角点的射线是否被遮挡（仅在x,z平面上）
+            blocked_corners = 0
+            for corner_x, corner_z in corner_points:
+                # 仅使用x,z坐标进行2D遮挡检测
+                corner_2d = [corner_x, corner_z]
+                
+                # 检查射线是否与大物体的边界框相交（仅x,z平面）
+                if self._ray_intersects_box_2d(camera_position, corner_2d, big_bounds):
+                    # 进一步检查遮挡物是否真的在摄像机和角点之间
+                    if self._is_object_between_camera_and_point_2d(camera_position, corner_2d, big_transform.position):
+                        blocked_corners += 1
+            
+            # 如果有任何角点被遮挡，则物体不完全可见
+            if blocked_corners > 0:
+                print(f"Object {target_object_id} is partially blocked by big object {big_object_id} ({blocked_corners}/{len(corner_points)} corners blocked)")
+                return result
+        
+        # 如果没有遮挡，物体可见
+        result["can_see"] = True
+        
+        # 创建临时摄像机并拍照
+        result["image_path"] = self._create_temp_camera_and_capture(camera_position, camera_look_at, target_object_id)
+        
+        # 计算目标物体在当前视角下的朝向
+        result["object_direction"] = self._calculate_object_direction(camera_position, camera_look_at, target_transform)
+        
+        return result
+    
+    def _create_temp_camera_and_capture(self, camera_position, camera_look_at, target_object_id):
+        """
+        创建临时摄像机并拍照
+        
+        Args:
+            camera_position: 摄像机位置
+            camera_look_at: 摄像机朝向点
+            target_object_id: 目标物体ID
+            
+        Returns:
+            str: 图片保存路径
+        """
+        # 生成唯一的临时摄像机ID
+        temp_camera_id = f"temp_camera_{target_object_id}_{random.randint(1000, 9999)}"
+        
+        # 创建临时摄像机
+        commands = []
+        commands.extend(TDWUtils.create_avatar(
+            avatar_type="A_Img_Caps_Kinematic",
+            avatar_id=temp_camera_id,
+            position=camera_position,
+            look_at=camera_look_at
+        ))
+        
+        # 设置FOV
+        vertical_fov = self.calculate_vertical_fov(self.HORIZONTAL_FOV, self.screen_width, self.screen_height)
+        commands.append({
+            "$type": "set_field_of_view", 
+            "avatar_id": temp_camera_id, 
+            "field_of_view": vertical_fov
+        })
+        
+        # 添加临时图像捕获
+        temp_output_dir = self.output_directory / "temp_captures"
+        temp_output_dir.mkdir(exist_ok=True)
+        
+        temp_image_capture = ImageCapture(
+            path=temp_output_dir,
+            avatar_ids=[temp_camera_id],
+            pass_masks=["_img"],
+            png=True
+        )
+        
+        # 暂时添加临时图像捕获组件
+        self.add_ons.append(temp_image_capture)
+        
+        # 执行命令
+        commands.append({"$type": "terminate"})
+        self.communicate(commands)
+        
+        # 返回图片路径
+        image_path = temp_output_dir / temp_camera_id / "img_0000.png"
+        
+        # 重命名图片为更有意义的名称
+        final_image_name = f"view_object_{target_object_id}_{temp_camera_id}.png"
+        final_image_path = temp_output_dir / final_image_name
+        
+        if image_path.exists():
+            image_path.rename(final_image_path)
+            # 删除临时目录
+            import shutil
+            shutil.rmtree(temp_output_dir / temp_camera_id, ignore_errors=True)
+            return str(final_image_path)
+        else:
+            print(f"Warning: Image not found at {image_path}")
+            return None
+
+    def _calculate_object_direction(self, camera_position, camera_look_at, target_transform):
+        """
+        计算目标物体在当前视角下的朝向（前后左右）
+        
+        Args:
+            camera_position: 摄像机位置
+            camera_look_at: 摄像机朝向点
+            target_transform: 目标物体的变换信息
+            
+        Returns:
+            str: "front", "back", "left", "right"
+        """
+        # 计算摄像机朝向向量
+        cam_dx = camera_look_at["x"] - camera_position["x"]
+        cam_dz = camera_look_at["z"] - camera_position["z"]
+        cam_forward = np.array([cam_dx, cam_dz])
+        cam_forward = cam_forward / np.linalg.norm(cam_forward)  # 归一化
+        
+        # 获取物体的朝向向量（仅考虑x,z平面）
+        obj_forward = target_transform.forward
+        obj_forward_2d = np.array([obj_forward[0], obj_forward[2]])
+        obj_forward_2d = obj_forward_2d / np.linalg.norm(obj_forward_2d)  # 归一化
+        
+        # 计算相对角度
+        dot_product = np.dot(cam_forward, obj_forward_2d)
+        cross_product = cam_forward[0] * obj_forward_2d[1] - cam_forward[1] * obj_forward_2d[0]
+        
+        # 使用点积和叉积确定相对方向
+        angle = math.atan2(cross_product, dot_product)
+        angle_degrees = math.degrees(angle)
+        
+        # 将角度映射到四个基本方向
+        if -45 <= angle_degrees <= 45:
+            return "front"  # 物体朝向与相机朝向相同
+        elif 45 < angle_degrees <= 135:
+            return "left"   # 物体朝向相机的左侧
+        elif 135 < angle_degrees or angle_degrees <= -135:
+            return "back"   # 物体朝向与相机朝向相反
+        else:  # -135 < angle_degrees < -45
+            return "right"  # 物体朝向相机的右侧
+
+    def _ray_intersects_box_2d(self, ray_start, ray_end_2d, box_bounds):
+        """
+        检测射线是否与边界框相交（仅考虑x,z平面的2D投影）
+        
+        Args:
+            ray_start: 射线起点 {"x": float, "y": float, "z": float}
+            ray_end_2d: 射线终点 [x, z] (仅2D)
+            box_bounds: 边界框信息
+            
+        Returns:
+            bool: True表示相交
+        """
+        # 计算边界框在x,z平面的最小和最大坐标
+        all_boundary_points = [
+            box_bounds.left, box_bounds.right, box_bounds.front,
+            box_bounds.back, box_bounds.top, box_bounds.bottom
+        ]
+        
+        # 找x,z轴的最值
+        x_coords = [self.extract_coordinate_scalar(point, 0) for point in all_boundary_points]
+        z_coords = [self.extract_coordinate_scalar(point, 2) for point in all_boundary_points]
+        
+        box_min_2d = [min(x_coords), min(z_coords)]
+        box_max_2d = [max(x_coords), max(z_coords)]
+        
+        # 使用线段与2D AABB的相交测试
+        return self._line_segment_intersects_aabb_2d(
+            [ray_start["x"], ray_start["z"]], 
+            ray_end_2d, 
+            box_min_2d, 
+            box_max_2d
+        )
+    
+    def _line_segment_intersects_aabb_2d(self, start, end, box_min, box_max):
+        """
+        检测线段是否与轴对齐边界框(AABB)相交（仅2D x,z平面）
+        """
+        # 计算线段方向
+        direction = [end[i] - start[i] for i in range(2)]  # 仅x,z两个维度
+        
+        t_min = 0.0
+        t_max = 1.0
+        
+        for i in range(2):  # 仅检查x,z轴
+            if abs(direction[i]) < 1e-8:  # 射线平行于某个轴
+                if start[i] < box_min[i] or start[i] > box_max[i]:
+                    return False
+            else:
+                t1 = (box_min[i] - start[i]) / direction[i]
+                t2 = (box_max[i] - start[i]) / direction[i]
+                
+                if t1 > t2:
+                    t1, t2 = t2, t1
+                    
+                t_min = max(t_min, t1)
+                t_max = min(t_max, t2)
+                
+                if t_min > t_max:
+                    return False
+                    
+        return True
+    
+    def _is_object_between_camera_and_point_2d(self, camera_pos, target_point_2d, obstacle_pos):
+        """
+        检查障碍物是否在摄像机和目标点之间（仅考虑x,z平面）
+        """
+        # 计算摄像机到目标点的距离（仅x,z平面）
+        cam_to_target_dist = math.sqrt(
+            (target_point_2d[0] - camera_pos["x"])**2 + 
+            (target_point_2d[1] - camera_pos["z"])**2
+        )
+        
+        # 计算摄像机到障碍物的距离（仅x,z平面）
+        obstacle_x = self.extract_coordinate_scalar(obstacle_pos, 0)  # x 坐标
+        obstacle_z = self.extract_coordinate_scalar(obstacle_pos, 2)  # z 坐标
+        cam_to_obstacle_dist = math.sqrt(
+            (obstacle_x - camera_pos["x"])**2 + 
+            (obstacle_z - camera_pos["z"])**2
+        )
+        
+        # 障碍物必须在摄像机和目标之间才能造成遮挡
+        return cam_to_obstacle_dist < cam_to_target_dist
 
     def run(self):
         self.setup_scene()
         # 在场景终止后添加标签
         self.add_camera_labels_to_top_down_image()
+        
+        # 示例调用can_camera_see_object函数
+        if self.object_ids:
+            # 使用第一个摄像机的配置
+            camera_config = self.camera_configs[17]
+            # camera_config = self.camera_configs[6]
+            camera_pos = camera_config["position"]
+            camera_look_at = camera_config["look_at"]
+            
+            # 测试第一个物体
+            target_object_id = self.object_ids[4]
+            print(f"Target object ID: {target_object_id}")
+            
+            result = self.can_camera_see_object(
+                camera_position=camera_pos,
+                camera_look_at=camera_look_at,
+                target_object_id=target_object_id
+            )
+            
+            print(f"Camera position: {camera_pos}")
+            print(f"Camera look_at: {camera_look_at}")
+            print("\nResult:")
+            print(json.dumps(result, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__":
     output_directory = r"D:\ComputerScience\Leetcode\spatial\images1"
